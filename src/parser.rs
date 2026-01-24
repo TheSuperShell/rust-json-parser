@@ -31,25 +31,35 @@ impl Dumper {
             Value::Sting(s) => format!("\"{}\"", s),
             Value::Array(arr) => {
                 let mut result = String::from("[\n");
-                for v in arr.iter() {
+                let mut arr = arr.iter().peekable();
+                while let Some(v) = arr.next() {
                     result.push_str(&format!(
-                        "{}{},\n",
+                        "{}{}",
                         " ".repeat(self.indent * (level + 1)),
                         self.visit(v, level + 1)
                     ));
+                    match arr.peek() {
+                        Some(_) => result.push_str(",\n"),
+                        None => result.push_str("\n"),
+                    }
                 }
                 result.push_str(&format!("{}]", indent_str));
                 result
             }
             Value::Object(obj) => {
                 let mut result = String::from("{\n");
-                for (k, v) in obj.iter() {
+                let mut obj = obj.iter().peekable();
+                while let Some((k, v)) = obj.next() {
                     result.push_str(&format!(
-                        "{}\"{}\": {},\n",
+                        "{}\"{}\": {}",
                         " ".repeat(self.indent * (level + 1)),
                         k,
                         self.visit(v, level + 1)
                     ));
+                    match obj.peek() {
+                        Some(_) => result.push_str(",\n"),
+                        None => result.push_str("\n"),
+                    }
                 }
                 result.push_str(&format!("{}{}", indent_str, "}"));
                 result
