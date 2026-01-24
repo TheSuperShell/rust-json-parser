@@ -1,4 +1,4 @@
-use crate::tokens::Token;
+use crate::{error::Error, tokens::Token};
 
 #[derive(Debug)]
 pub struct Lexer {
@@ -14,31 +14,34 @@ impl Lexer {
         }
     }
 
-    pub fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> Result<Token, Error> {
         self.trim_whitespace();
         let char = self.advance();
         match char {
-            Some('{') => Token::LeftBrace,
-            Some('}') => Token::RightBrace,
-            Some('[') => Token::LeftParen,
-            Some(']') => Token::RightParen,
-            Some(',') => Token::Comma,
-            Some(':') => Token::Collon,
-            Some('"') => self.string(),
+            Some('{') => Ok(Token::LeftBrace),
+            Some('}') => Ok(Token::RightBrace),
+            Some('[') => Ok(Token::LeftParen),
+            Some(']') => Ok(Token::RightParen),
+            Some(',') => Ok(Token::Comma),
+            Some(':') => Ok(Token::Collon),
+            Some('"') => Ok(self.string()),
             Some(ch) if ch.is_digit(10) => {
                 self.posistion -= 1; // step back to include the digit
-                self.number()
+                Ok(self.number())
             }
             Some(ch) if ch == '-' && self.peek().map_or(false, |c| c.is_digit(10)) => {
                 self.posistion -= 1; // step back to include the '-'
-                self.number()
+                Ok(self.number())
             }
             Some(ch) if ch.is_alphabetic() => {
                 self.posistion -= 1; // step back to include the character
                 self.id()
             }
-            None => Token::EOF,
-            _ => panic!("Unexpected character: {:?}", char),
+            None => Ok(Token::EOF),
+            _ => Err(Error::LexerError {
+                msg: "Unexpected character".to_string(),
+                position: self.posistion,
+            }),
         }
     }
 
@@ -52,7 +55,7 @@ impl Lexer {
         }
     }
 
-    fn id(&mut self) -> Token {
+    fn id(&mut self) -> Result<Token, Error> {
         let mut ident = String::new();
         while let Some(ch) = self.peek() {
             if ch.is_alphanumeric() {
@@ -63,10 +66,13 @@ impl Lexer {
             }
         }
         match ident.as_str() {
-            "true" => Token::Boolean(true),
-            "false" => Token::Boolean(false),
-            "null" => Token::Null,
-            _ => panic!("Unknown identifier: {}", ident),
+            "true" => Ok(Token::Boolean(true)),
+            "false" => Ok(Token::Boolean(false)),
+            "null" => Ok(Token::Null),
+            _ => Err(Error::LexerError {
+                msg: format!("Unknown identifier: {}", ident),
+                position: self.posistion,
+            }),
         }
     }
 

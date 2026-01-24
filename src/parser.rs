@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{lexer::Lexer, tokens::Token};
+use crate::{error::Error, lexer::Lexer, tokens::Token};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
@@ -65,32 +65,36 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(mut lexer: Lexer) -> Self {
-        let current_token = lexer.next_token();
-        Parser {
+    pub fn new(mut lexer: Lexer) -> Result<Self, Error> {
+        let current_token = lexer.next_token()?;
+        Ok(Parser {
             lexer,
             current_token,
-        }
+        })
     }
 
-    fn eat(&mut self, expected: Token) {
+    fn eat(&mut self, expected: Token) -> Result<(), Error> {
         if self.current_token != expected {
-            panic!(
-                "Unexpected token: {:?}, expected: {:?}",
-                self.current_token, expected
-            );
+            return Err(Error::ParserError {
+                msg: format!(
+                    "Expected token {:?}, got {:?}",
+                    expected, self.current_token
+                ),
+                token: self.current_token.clone(),
+            });
         }
-        self.current_token = self.lexer.next_token();
+        self.current_token = self.lexer.next_token()?;
+        Ok(())
     }
 
     /// json:
     ///  value? EOF
-    pub fn json(&mut self) -> Value {
+    pub fn json(&mut self) -> Result<Value, Error> {
         match self.current_token {
-            Token::EOF => Value::Null,
+            Token::EOF => Ok(Value::Null),
             _ => {
                 let obj = self.value();
-                self.eat(Token::EOF);
+                self.eat(Token::EOF)?;
                 obj
             }
         }
@@ -103,82 +107,90 @@ impl Parser {
     /// number |
     /// boolean |
     /// null
-    fn value(&mut self) -> Value {
+    fn value(&mut self) -> Result<Value, Error> {
         match &self.current_token {
             Token::LeftBrace => self.object(),
             Token::LeftParen => self.array(),
             Token::String(s) => {
                 let value = Value::Sting(s.clone());
-                self.eat(Token::String(s.clone()));
-                value
+                self.eat(Token::String(s.clone()))?;
+                Ok(value)
             }
             Token::Number(n) => {
                 let value = Value::Number(*n);
-                self.eat(Token::Number(*n));
-                value
+                self.eat(Token::Number(*n))?;
+                Ok(value)
             }
             Token::Boolean(b) => {
                 let value = Value::Bool(*b);
-                self.eat(Token::Boolean(*b));
-                value
+                self.eat(Token::Boolean(*b))?;
+                Ok(value)
             }
             Token::Null => {
-                self.eat(Token::Null);
-                Value::Null
+                self.eat(Token::Null)?;
+                Ok(Value::Null)
             }
-            _ => panic!("Unexpected token in value: {:?}", self.current_token),
+            _ => Err(Error::ParserError {
+                msg: format!("Unexpected token in value: {:?}", self.current_token),
+                token: self.current_token.clone(),
+            }),
         }
     }
 
     /// object:
     ///  LeftBrace (property (Comma property)*)? RightBrace
-    fn object(&mut self) -> Value {
-        self.eat(Token::LeftBrace);
+    fn object(&mut self) -> Result<Value, Error> {
+        self.eat(Token::LeftBrace)?;
         let mut map = HashMap::new();
         if self.current_token != Token::RightBrace {
-            let (key, value) = self.property();
+            let (key, value) = self.property()?;
             map.insert(key, value);
             while self.current_token == Token::Comma {
-                self.eat(Token::Comma);
-                let (key, value) = self.property();
+                self.eat(Token::Comma)?;
+                let (key, value) = self.property()?;
                 map.insert(key, value);
             }
         }
-        self.eat(Token::RightBrace);
-        Value::Object(Box::new(map))
+        self.eat(Token::RightBrace)?;
+        Ok(Value::Object(Box::new(map)))
     }
 
     /// property:
     /// String Collon value
-    fn property(&mut self) -> (String, Value) {
+    fn property(&mut self) -> Result<(String, Value), Error> {
         let key = match &self.current_token {
             Token::String(s) => s.clone(),
-            _ => panic!(
-                "Expected string as object key, found: {:?}",
-                self.current_token
-            ),
+            _ => {
+                return Err(Error::ParserError {
+                    msg: format!(
+                        "Expected string as object key, got {:?}",
+                        self.current_token
+                    ),
+                    token: self.current_token.clone(),
+                });
+            }
         };
-        self.eat(Token::String(key.clone()));
-        self.eat(Token::Collon);
-        let value = self.value();
-        (key, value)
+        self.eat(Token::String(key.clone()))?;
+        self.eat(Token::Collon)?;
+        let value = self.value()?;
+        Ok((key, value))
     }
 
     /// array:
     /// LeftParen (value (Comma value)*)? RightParen
-    fn array(&mut self) -> Value {
-        self.eat(Token::LeftParen);
+    fn array(&mut self) -> Result<Value, Error> {
+        self.eat(Token::LeftParen)?;
         let mut arr = Vec::new();
         if self.current_token != Token::RightParen {
-            let value = self.value();
+            let value = self.value()?;
             arr.push(value);
             while self.current_token == Token::Comma {
-                self.eat(Token::Comma);
-                let value = self.value();
+                self.eat(Token::Comma)?;
+                let value = self.value()?;
                 arr.push(value);
             }
         }
-        self.eat(Token::RightParen);
-        Value::Array(Box::new(arr))
+        self.eat(Token::RightParen)?;
+        Ok(Value::Array(Box::new(arr)))
     }
 }
