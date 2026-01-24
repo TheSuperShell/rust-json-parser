@@ -39,7 +39,7 @@ impl Lexer {
             }
             None => Ok(Token::EOF),
             _ => Err(Error::LexerError {
-                msg: "Unexpected character".to_string(),
+                msg: format!("Unexpected character {:?}", char),
                 position: self.posistion,
             }),
         }
@@ -164,6 +164,24 @@ mod tests {
         for expected in expected_tokens {
             let token = lexer.next_token().unwrap();
             assert_eq!(token, expected);
+        }
+    }
+
+    #[test]
+    fn test_lexer_unexpected_character() {
+        let input = r#"{"key": @value}"#;
+        let mut lexer = Lexer::new(input.to_string());
+
+        // Consume tokens until the unexpected character
+        lexer.next_token().unwrap(); // {
+        lexer.next_token().unwrap(); // "key"
+        lexer.next_token().unwrap(); // :
+
+        let result = lexer.next_token();
+        assert!(result.is_err());
+        if let Err(Error::LexerError { msg, position }) = result {
+            assert_eq!(msg, "Unexpected character Some('@')");
+            assert_eq!(position, 9); // position of '@'
         }
     }
 }
