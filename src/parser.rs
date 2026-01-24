@@ -76,10 +76,7 @@ impl Parser {
     fn eat(&mut self, expected: Token) -> Result<(), Error> {
         if self.current_token != expected {
             return Err(Error::ParserError {
-                msg: format!(
-                    "Expected token {:?}, got {:?}",
-                    expected, self.current_token
-                ),
+                msg: format!("Expected {:?}", expected),
                 token: self.current_token.clone(),
             });
         }
@@ -93,9 +90,9 @@ impl Parser {
         match self.current_token {
             Token::EOF => Ok(Value::Null),
             _ => {
-                let obj = self.value();
+                let obj = self.value()?;
                 self.eat(Token::EOF)?;
-                obj
+                Ok(obj)
             }
         }
     }
@@ -147,6 +144,12 @@ impl Parser {
             map.insert(key, value);
             while self.current_token == Token::Comma {
                 self.eat(Token::Comma)?;
+                if self.current_token == Token::RightBrace {
+                    return Err(Error::ParserError {
+                        msg: "Trailing comma in object".to_string(),
+                        token: self.current_token.clone(),
+                    });
+                }
                 let (key, value) = self.property()?;
                 map.insert(key, value);
             }
@@ -186,11 +189,173 @@ impl Parser {
             arr.push(value);
             while self.current_token == Token::Comma {
                 self.eat(Token::Comma)?;
+                if self.current_token == Token::RightParen {
+                    return Err(Error::ParserError {
+                        msg: "Trailing comma in array".to_string(),
+                        token: self.current_token.clone(),
+                    });
+                }
                 let value = self.value()?;
                 arr.push(value);
             }
         }
         self.eat(Token::RightParen)?;
         Ok(Value::Array(Box::new(arr)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_simple_object() {
+        let input = r#"{"key": "value", "number": 42, "bool": true, "null_value": null}"#;
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer).unwrap();
+        let parsed = parser.json().unwrap();
+
+        let mut expected_map = HashMap::new();
+        expected_map.insert("key".to_string(), Value::Sting("value".to_string()));
+        expected_map.insert("number".to_string(), Value::Number(42.0));
+        expected_map.insert("bool".to_string(), Value::Bool(true));
+        expected_map.insert("null_value".to_string(), Value::Null);
+
+        assert_eq!(parsed, Value::Object(Box::new(expected_map)));
+    }
+
+    #[test]
+    fn test_parse_array() {
+        let input = r#"["item1", 2, false, null]"#;
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer).unwrap();
+        let parsed = parser.json().unwrap();
+
+        let expected_array = vec![
+            Value::Sting("item1".to_string()),
+            Value::Number(2.0),
+            Value::Bool(false),
+            Value::Null,
+        ];
+
+        assert_eq!(parsed, Value::Array(Box::new(expected_array)));
+    }
+
+    #[test]
+    fn test_empty() {
+        let input = r#""#;
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer).unwrap();
+        let parsed = parser.json().unwrap();
+
+        assert_eq!(parsed, Value::Null);
+    }
+
+    #[test]
+    fn test_nested_structure() {
+        let input = r#"{
+            "person": {
+                "name": "Alice",
+                "age": 30,
+                "is_student": false,
+                "courses": ["Math", "Science"],
+                "address": {
+                    "street": "123 Main St",
+                    "city": "Anytown"
+                }
+            }
+        }"#;
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer).unwrap();
+        let parsed = parser.json().unwrap();
+
+        let mut address_map = HashMap::new();
+        address_map.insert(
+            "street".to_string(),
+            Value::Sting("123 Main St".to_string()),
+        );
+        address_map.insert("city".to_string(), Value::Sting("Anytown".to_string()));
+
+        let mut person_map = HashMap::new();
+        person_map.insert("name".to_string(), Value::Sting("Alice".to_string()));
+        person_map.insert("age".to_string(), Value::Number(30.0));
+        person_map.insert("is_student".to_string(), Value::Bool(false));
+        person_map.insert(
+            "courses".to_string(),
+            Value::Array(Box::new(vec![
+                Value::Sting("Math".to_string()),
+                Value::Sting("Science".to_string()),
+            ])),
+        );
+        person_map.insert("address".to_string(), Value::Object(Box::new(address_map)));
+
+        let mut expected_map = HashMap::new();
+        expected_map.insert("person".to_string(), Value::Object(Box::new(person_map)));
+
+        assert_eq!(parsed, Value::Object(Box::new(expected_map)));
+    }
+
+    #[test]
+    fn test_trainling_comma_in_object() {
+        let input = r#"{"key1": "value1", "key2": "value2",}"#;
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer).unwrap();
+        let result = parser.json();
+
+        assert!(result.is_err());
+        if let Err(Error::ParserError { msg, token }) = result {
+            assert_eq!(msg, "Trailing comma in object");
+            assert_eq!(token, Token::RightBrace);
+        } else {
+            panic!("Expected ParserError");
+        }
+    }
+
+    #[test]
+    fn test_trailing_comma_in_array() {
+        let input = r#"["item1", "item2",]"#;
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer).unwrap();
+        let result = parser.json();
+
+        assert!(result.is_err());
+        if let Err(Error::ParserError { msg, token }) = result {
+            assert_eq!(msg, "Trailing comma in array");
+            assert_eq!(token, Token::RightParen);
+        } else {
+            panic!("Expected ParserError");
+        }
+    }
+
+    #[test]
+    fn test_unclosed_object() {
+        let input = r#"{"key": "value""#;
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer).unwrap();
+        let result = parser.json();
+
+        assert!(result.is_err());
+        if let Err(Error::ParserError { msg, token }) = result {
+            assert_eq!(msg, "Expected RightBrace");
+            assert_eq!(token, Token::EOF);
+        } else {
+            panic!("Expected ParserError");
+        }
+    }
+
+    #[test]
+    fn test_unclosed_array() {
+        let input = r#"["item1", "item2""#;
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer).unwrap();
+        let result = parser.json();
+
+        assert!(result.is_err());
+        if let Err(Error::ParserError { msg, token }) = result {
+            assert_eq!(msg, "Expected RightParen");
+            assert_eq!(token, Token::EOF);
+        } else {
+            panic!("Expected ParserError");
+        }
     }
 }
