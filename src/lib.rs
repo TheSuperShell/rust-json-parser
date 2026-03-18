@@ -66,7 +66,7 @@ mod tests {
         let input = "{\"key\": \"value\"}";
         let parsed = parse_json(input).unwrap();
         let mut expected = std::collections::HashMap::new();
-        expected.insert("key".to_string(), Value::Sting("value".to_string()));
-        assert_eq!(parsed, Value::Object(Box::new(expected)));
+        expected.insert("key".to_string(), Value::String("value".to_string()));
+        assert_eq!(parsed, Value::Object(expected));
     }
 }

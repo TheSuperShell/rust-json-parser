@@ -10,5 +10,5 @@ pub enum Token {
     String(String),
     Boolean(bool),
     Null,
-    EOF,
+    Eof,
 }

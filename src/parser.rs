@@ -7,9 +7,9 @@ pub enum Value {
     Null,
     Bool(bool),
     Number(f64),
-    Sting(String),
-    Array(Box<Vec<Value>>),
-    Object(Box<HashMap<String, Value>>),
+    String(String),
+    Array(Vec<Value>),
+    Object(HashMap<String, Value>),
 }
 
 #[derive(Debug)]
@@ -28,7 +28,7 @@ impl Dumper {
             Value::Null => "null".to_string(),
             Value::Bool(b) => b.to_string(),
             Value::Number(n) => n.to_string(),
-            Value::Sting(s) => format!("\"{}\"", s),
+            Value::String(s) => format!("\"{}\"", s),
             Value::Array(arr) => {
                 let mut result = String::from("[\n");
                 let mut arr = arr.iter().peekable();
@@ -40,7 +40,7 @@ impl Dumper {
                     ));
                     match arr.peek() {
                         Some(_) => result.push_str(",\n"),
-                        None => result.push_str("\n"),
+                        None => result.push('\n'),
                     }
                 }
                 result.push_str(&format!("{}]", indent_str));
@@ -58,7 +58,7 @@ impl Dumper {
                     ));
                     match obj.peek() {
                         Some(_) => result.push_str(",\n"),
-                        None => result.push_str("\n"),
+                        None => result.push('\n'),
                     }
                 }
                 result.push_str(&format!("{}{}", indent_str, "}"));
@@ -98,10 +98,10 @@ impl Parser {
     ///  value? EOF
     pub fn json(&mut self) -> Result<Value, Error> {
         match self.current_token {
-            Token::EOF => Ok(Value::Null),
+            Token::Eof => Ok(Value::Null),
             _ => {
                 let obj = self.value()?;
-                self.eat(Token::EOF)?;
+                self.eat(Token::Eof)?;
                 Ok(obj)
             }
         }
@@ -119,7 +119,7 @@ impl Parser {
             Token::LeftBrace => self.object(),
             Token::LeftParen => self.array(),
             Token::String(s) => {
-                let value = Value::Sting(s.clone());
+                let value = Value::String(s.clone());
                 self.eat(Token::String(s.clone()))?;
                 Ok(value)
             }
@@ -165,7 +165,7 @@ impl Parser {
             }
         }
         self.eat(Token::RightBrace)?;
-        Ok(Value::Object(Box::new(map)))
+        Ok(Value::Object(map))
     }
 
     /// property:
@@ -210,7 +210,7 @@ impl Parser {
             }
         }
         self.eat(Token::RightParen)?;
-        Ok(Value::Array(Box::new(arr)))
+        Ok(Value::Array(arr))
     }
 }
 
@@ -226,12 +226,12 @@ mod tests {
         let parsed = parser.json().unwrap();
 
         let mut expected_map = HashMap::new();
-        expected_map.insert("key".to_string(), Value::Sting("value".to_string()));
+        expected_map.insert("key".to_string(), Value::String("value".to_string()));
         expected_map.insert("number".to_string(), Value::Number(42.0));
         expected_map.insert("bool".to_string(), Value::Bool(true));
         expected_map.insert("null_value".to_string(), Value::Null);
 
-        assert_eq!(parsed, Value::Object(Box::new(expected_map)));
+        assert_eq!(parsed, Value::Object(expected_map));
     }
 
     #[test]
@@ -242,13 +242,13 @@ mod tests {
         let parsed = parser.json().unwrap();
 
         let expected_array = vec![
-            Value::Sting("item1".to_string()),
+            Value::String("item1".to_string()),
             Value::Number(2.0),
             Value::Bool(false),
             Value::Null,
         ];
 
-        assert_eq!(parsed, Value::Array(Box::new(expected_array)));
+        assert_eq!(parsed, Value::Array(expected_array));
     }
 
     #[test]
@@ -282,27 +282,27 @@ mod tests {
         let mut address_map = HashMap::new();
         address_map.insert(
             "street".to_string(),
-            Value::Sting("123 Main St".to_string()),
+            Value::String("123 Main St".to_string()),
         );
-        address_map.insert("city".to_string(), Value::Sting("Anytown".to_string()));
+        address_map.insert("city".to_string(), Value::String("Anytown".to_string()));
 
         let mut person_map = HashMap::new();
-        person_map.insert("name".to_string(), Value::Sting("Alice".to_string()));
+        person_map.insert("name".to_string(), Value::String("Alice".to_string()));
         person_map.insert("age".to_string(), Value::Number(30.0));
         person_map.insert("is_student".to_string(), Value::Bool(false));
         person_map.insert(
             "courses".to_string(),
-            Value::Array(Box::new(vec![
-                Value::Sting("Math".to_string()),
-                Value::Sting("Science".to_string()),
-            ])),
+            Value::Array(vec![
+                Value::String("Math".to_string()),
+                Value::String("Science".to_string()),
+            ]),
         );
-        person_map.insert("address".to_string(), Value::Object(Box::new(address_map)));
+        person_map.insert("address".to_string(), Value::Object(address_map));
 
         let mut expected_map = HashMap::new();
-        expected_map.insert("person".to_string(), Value::Object(Box::new(person_map)));
+        expected_map.insert("person".to_string(), Value::Object(person_map));
 
-        assert_eq!(parsed, Value::Object(Box::new(expected_map)));
+        assert_eq!(parsed, Value::Object(expected_map));
     }
 
     #[test]
@@ -347,7 +347,7 @@ mod tests {
         assert!(result.is_err());
         if let Err(Error::ParserError { msg, token }) = result {
             assert_eq!(msg, "Expected RightBrace");
-            assert_eq!(token, Token::EOF);
+            assert_eq!(token, Token::Eof);
         } else {
             panic!("Expected ParserError");
         }
@@ -363,7 +363,7 @@ mod tests {
         assert!(result.is_err());
         if let Err(Error::ParserError { msg, token }) = result {
             assert_eq!(msg, "Expected RightParen");
-            assert_eq!(token, Token::EOF);
+            assert_eq!(token, Token::Eof);
         } else {
             panic!("Expected ParserError");
         }

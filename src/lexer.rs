@@ -25,11 +25,11 @@ impl Lexer {
             Some(',') => Ok(Token::Comma),
             Some(':') => Ok(Token::Collon),
             Some('"') => Ok(self.string()),
-            Some(ch) if ch.is_digit(10) => {
+            Some(ch) if ch.is_ascii_digit() => {
                 self.posistion -= 1; // step back to include the digit
                 Ok(self.number())
             }
-            Some(ch) if ch == '-' && self.peek().map_or(false, |c| c.is_digit(10)) => {
+            Some(ch) if ch == '-' && self.peek().is_some_and(|c| c.is_ascii_digit()) => {
                 self.posistion -= 1; // step back to include the '-'
                 Ok(self.number())
             }
@@ -37,7 +37,7 @@ impl Lexer {
                 self.posistion -= 1; // step back to include the character
                 self.id()
             }
-            None => Ok(Token::EOF),
+            None => Ok(Token::Eof),
             _ => Err(Error::LexerError {
                 msg: format!("Unexpected character {:?}", char),
                 position: self.posistion,
@@ -79,7 +79,7 @@ impl Lexer {
     fn number(&mut self) -> Token {
         let mut num_str = String::new();
         while let Some(ch) = self.peek() {
-            if ch.is_digit(10) || ch == '.' {
+            if ch.is_ascii_digit() || ch == '.' {
                 num_str.push(ch);
                 self.advance();
             } else {
@@ -158,7 +158,7 @@ mod tests {
             Token::Collon,
             Token::Null,
             Token::RightBrace,
-            Token::EOF,
+            Token::Eof,
         ];
 
         for expected in expected_tokens {
